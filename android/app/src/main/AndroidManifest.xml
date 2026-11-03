@@ -207,9 +207,10 @@
         android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
         android:windowSoftInputMode="adjustNothing"
         android:excludeFromRecents="true"
-        android:taskAffinity="com.anythingllm.assistant"
+        android:taskAffinity="${applicationId}.assistant"
         android:exported="false" />
 
+      <uses-native-library android:name="libOpenCL.so" android:required="false" />
       <uses-native-library android:name="libadsprpc.so" android:required="false" />
       <uses-native-library android:name="libcdsprpc.so" android:required="false" />
     </application>

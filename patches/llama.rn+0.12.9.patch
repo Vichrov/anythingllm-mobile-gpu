@@ -1,0 +1,29 @@
+diff --git a/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.java b/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.java
+--- a/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.java
++++ b/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.java
+@@ -178,11 +178,11 @@
+       return false;
+     }
+ 
+-    // Extract HTP libraries from assets before loading native library
+-    try {
+-      extractHtpLibrariesFromAssets(context);
+-    } catch (Exception e) {
+-      Log.w(TAG, "Failed to extract HTP libraries", e);
++    // GPU fork: use Adreno OpenCL, never probe or start Hexagon DSP devices.
++    try {
++      android.system.Os.setenv("LM_GGML_HEXAGON_NDEV", "0", true);
++    } catch (Exception e) {
++      Log.w(TAG, "Could not disable Hexagon", e);
+     }
+ 
+     String cpuFeatures = getCpuFeatures();
+@@ -197,7 +197,7 @@
+       boolean jniLoaded = false;
+       String loadedLib = "";
+       if (isArm64V8a()) {
+-        if (hasDotProd && hasI8mm && hasHexagon && hasAdreno) {
++        if (hasDotProd && hasI8mm && hasAdreno) {
+           if (tryLoadLibrary("rnllama_jni_v8_2_dotprod_i8mm_hexagon_opencl")) {
+             jniLoaded = true;
+             loadedLib = "rnllama_jni_v8_2_dotprod_i8mm_hexagon_opencl";

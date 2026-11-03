@@ -22,7 +22,7 @@ class Telemetry {
      * Cached opt-out state so `logEvent` can bail synchronously. Defaults to enabled and is
      * hydrated from storage on construction; only an explicit "false" turns it off.
      */
-    private enabled = true;
+    private enabled = false;
     private ready: Promise<void> = Promise.resolve();
 
     /**
@@ -97,20 +97,8 @@ class Telemetry {
     constructor() {
         if (Telemetry.instance) return Telemetry.instance;
         Telemetry.instance = this;
-        this.analytics = getAnalytics(getApp());
-        // Creating the Crashlytics instance installs its global JS error handler, so fatal JS
-        // errors and native crashes are reported with their message and stack. Follows the same opt-out.
-        this.crashlytics = getCrashlytics();
-        this.ready = AsyncStorage.getItem(TELEMETRY_ENABLED_KEY)
-            .then(async (value) => {
-                this.enabled = value !== 'false';
-                if (!this.enabled)
-                    await Promise.all([
-                        setAnalyticsCollectionEnabled(this.analytics!, false),
-                        setCrashlyticsCollectionEnabled(this.crashlytics!, false),
-                    ]);
-            })
-            .catch((e) => console.error('[Telemetry] could not read opt-out setting', e));
+        // Fork telemetry is disabled; no upstream Firebase initialization.
+
     }
 
     log(message: any, ...args: any[]) {
@@ -197,16 +185,8 @@ class Telemetry {
      */
     async setEnabled(enabled: boolean): Promise<void> {
         await this.ready;
-        if (enabled === this.enabled) return;
-        if (!enabled) this.logEvent(this.CUSTOM_EVENTS.DISABLED_TELEMETRY);
-        this.enabled = enabled;
-        await Promise.all([
-            AsyncStorage.setItem(TELEMETRY_ENABLED_KEY, String(enabled)),
-            setAnalyticsCollectionEnabled(this.analytics!, enabled),
-            // Crash reports stay off in dev builds (firebase.json crashlytics_debug_enabled)
-            setCrashlyticsCollectionEnabled(this.crashlytics!, enabled && !__DEV__),
-        ]);
-        if (isDebugMode) this.log(`Anonymous telemetry ${enabled ? 'enabled' : 'disabled'}`);
+        this.enabled = false;
+        await AsyncStorage.setItem(TELEMETRY_ENABLED_KEY, "false");
     }
 }
 

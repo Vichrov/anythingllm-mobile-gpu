@@ -41,8 +41,7 @@ the `C:` drive letter as a remote host) re-run it from PowerShell / cmd:
 node ./node_modules/llama.rn/install/download-native-artifacts.js --force
 ```
 
-On-device inference is CPU-only by design. GPU and NPU offload paths were removed after measuring them slower
-than CPU on the devices we target, so please do not reintroduce them.
+This fork adds experimental Adreno OpenCL offload. See GPU_FORK.md for build and benchmark details.
 
 ## Building for Release
 

@@ -1,3 +1,4 @@
+import InferenceSettings from '@/components/InferenceSettings';
 import useModelManager from '@/hooks/useModelManager';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -121,6 +122,7 @@ export default function NativeOptions({
 
   return (
     <Fragment>
+      <InferenceSettings />
       {sections.map((section, sectionIndex) => (
         <Fragment key={`section-${section.title ?? 'presets'}`}>
           {section.title && <ProviderSectionHeader title={section.title} />}

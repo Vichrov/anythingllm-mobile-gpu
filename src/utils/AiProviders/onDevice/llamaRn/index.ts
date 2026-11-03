@@ -1,5 +1,7 @@
+import { getInferenceConfig, contextOptions, selectOpenCLDevice, recordInference, type InferenceReport } from '@/utils/inference';
 import {
   initLlama,
+  getBackendDevicesInfo,
   LlamaContext,
   type CompletionParams,
   type NativeCompletionResult,
@@ -15,7 +17,7 @@ import type OnDeviceProvider from '@/utils/AiProviders/onDevice/index';
 import { getDefaultContextLength } from '@/utils/contextLength';
 import ContextCompactor, { type CompactionChatMessage, truncateMiddle } from '@/utils/chat/contextCompaction';
 import { throwIfAborted } from '@/utils/chat/abort';
-import { ChatMemoryEstimate, enableAllocationLogging, estimateChatMemory, readGgufShape } from '@/utils/models/memoryEstimate';
+import { ChatMemoryEstimate, estimateChatMemory, readGgufShape } from '@/utils/models/memoryEstimate';
 import Telemetry from '@/utils/Telemetry';
 
 export type NativeLlamaChatMessage = {
@@ -28,7 +30,7 @@ export type ILlamaRnStreamCallback = (token: string) => void;
 
 export type OnDeviceRuntimeInfo = {
   runtime: 'llama.rn';
-  /** ggml devices the context runs on. Always CPU - Hexagon/OpenCL offload is deliberately not used (too slow in practice). */
+  /** Actual devices reported by the native context. */
   devices: string[];
   contextLength: number;
   supportsTools: boolean;
@@ -110,6 +112,8 @@ export default class LlamaRnWrapper {
   private visionEnabled = false;
   /** Set by `requestReload` while a generation is running - honoured before the next completion. */
   private reloadRequested = false;
+  private inferenceKey = "";
+  private inferenceReport: InferenceReport | null = null;
 
   constructor({ model, parent }: { model: string; parent: OnDeviceProvider }) {
     this.model = model;
@@ -401,24 +405,31 @@ export default class LlamaRnWrapper {
 
   private async createContext({ multimodal }: { multimodal: boolean }) {
     const nCtx = this.contextLength;
-    enableAllocationLogging(); // TODO: remove before release - see memoryEstimate.ts
+    const config = await getInferenceConfig();
+    const device = config.backend === 'opencl'
+      ? selectOpenCLDevice(await getBackendDevicesInfo()) : undefined;
+    const started = Date.now();
     const details = { source: this.modelDefinition ? 'catalog' : 'imported', model_id: this.model, n_ctx: nCtx, multimodal };
-    return Telemetry.trackNativeModelLoad('chat', this.ggufFilePath!, details, () => initLlama({
+    const context = await Telemetry.trackNativeModelLoad('chat', this.ggufFilePath!, details, () => initLlama({
       model: this.ggufFilePath!,
       n_ctx: nCtx,
-      n_batch: Math.min(LlamaRnWrapper.N_BATCH, nCtx),
-      n_ubatch: Math.min(LlamaRnWrapper.N_BATCH, nCtx),
-      use_mlock: true,
-      use_mmap: true,
-      // Shift the KV cache instead of failing if a long answer runs past the window.
-      // llama.rn requires shifting OFF for multimodal contexts so media token positions stay put;
-      // `runCompletion` already sizes n_predict to the room left so this rarely matters in practice.
+      ...contextOptions(config, nCtx, device),
       ctx_shift: !multimodal,
-      // CPU only. The Hexagon NPU / OpenCL backends in llama.cpp are experimental and slower
-      // than the CPU path on the phones we target, so we never offload layers.
-      n_gpu_layers: 0,
       ...(this.modelDefinition?.chatTemplateString ? { chat_template: this.modelDefinition.chatTemplateString } : {}),
     }));
+    if (config.backend === 'opencl' && !context.gpu) {
+      const reason = context.reasonNoGPU;
+      await context.release();
+      throw new Error(`GPU не включился / GPU inactive: ${reason || 'native context reports CPU'}. Select CPU or reduce GPU layers.`);
+    }
+    this.inferenceKey = JSON.stringify(config);
+    this.inferenceReport = {
+      model: this.model, backend: context.gpu ? 'OpenCL GPU' : 'CPU',
+      devices: context.devices ?? [], library: context.androidLib,
+      loadMs: Date.now() - started, contextLength: nCtx, config, timestamp: Date.now(),
+    };
+    recordInference(this.inferenceReport);
+    return context;
   }
 
   /**
@@ -618,7 +629,8 @@ export default class LlamaRnWrapper {
   ): Promise<NativeCompletionResult & { cappedByContext: boolean }> {
     this.keepAlive();
     throwIfAborted(signal); // may have been stopped while queued behind another round
-    if (this.reloadRequested) {
+    const requestedConfig = await getInferenceConfig();
+    if (this.reloadRequested || (this.context && this.inferenceKey !== JSON.stringify(requestedConfig))) {
       this.reloadRequested = false;
       await this.unloadModelUnlocked();
     }
@@ -660,6 +672,11 @@ export default class LlamaRnWrapper {
         },
         onToken,
       );
+      if (this.inferenceReport) recordInference({
+        ...this.inferenceReport, timestamp: Date.now(),
+        outputTps: result.timings.predicted_per_second,
+        promptTps: result.timings.prompt_per_second, tokens: result.timings.predicted_n,
+      });
       return { ...result, cappedByContext };
     } finally {
       this.isGenerating = false;

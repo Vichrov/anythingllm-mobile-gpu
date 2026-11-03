@@ -3,8 +3,8 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 apply plugin: "kotlin-kapt"
 apply plugin: "io.objectbox"
-apply plugin: 'com.google.gms.google-services'
-apply plugin: 'com.google.firebase.crashlytics'
+// GPU fork has no upstream Firebase project.
+
 
 apply from: "../../node_modules/react-native-config/android/dotenv.gradle"
 
@@ -41,11 +41,11 @@ android {
 
     namespace "com.anythingllm"
     defaultConfig {
-        applicationId "com.anythingllm"
+        applicationId "com.vichrov.anythingllm.gpu"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 93
-        versionName "1.3.2"
+        versionCode 10001
+        versionName "0.1.0-gpu"
         ndk {
             abiFilters "arm64-v8a"
         }
@@ -57,13 +57,9 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        release {
-            storeFile file("anythingllm-upload-key.keystore")
-            storePassword project.env.get("APP_RELEASE_STORE_PASSWORD")
-            keyAlias "anythingllm-keystore"
-            keyPassword project.env.get("APP_RELEASE_KEY_PASSWORD")
-        }
+        // Experimental APK uses the repository debug key; never use it for production.
     }
+
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
@@ -71,7 +67,7 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.release
+            signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             // Ship native debug symbols in the AAB so Play Console can symbolicate native (llama.rn) crashes
@@ -82,7 +78,7 @@ android {
     aaptOptions {
         noCompress "bin", "json"
         // Default AAPT ignore pattern plus the llama.rn Hexagon DSP blobs, which its gradle
-        // plugin copies into src/main/assets/ggml-hexagon on every build. We are CPU-only.
+        // plugin copies into src/main/assets/ggml-hexagon on every build. This fork uses CPU/OpenCL, not DSP.
         ignoreAssetsPattern "!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!ggml-hexagon:!libggml-htp-*.so"
     }
 
@@ -92,7 +88,7 @@ android {
             // one at runtime in RNLlama.java, falling through when a variant is missing.
             // We keep: dotprod+i8mm (2020+ SoCs), dotprod (2018-2020 SoCs), and the generic
             // librnllama.so / librnllama_jni.so which the loader always needs as a fallback.
-            // Hexagon/OpenCL offload is intentionally not shipped (CPU-only app).
+            // Keep the OpenCL variant for Adreno offload. DSP assets remain excluded.
             excludes += [
                 "**/librnllama_v8.so",
                 "**/librnllama_jni_v8.so",
@@ -100,8 +96,6 @@ android {
                 "**/librnllama_jni_v8_2.so",
                 "**/librnllama_v8_2_i8mm.so",
                 "**/librnllama_jni_v8_2_i8mm.so",
-                "**/librnllama_v8_2_dotprod_i8mm_hexagon_opencl.so",
-                "**/librnllama_jni_v8_2_dotprod_i8mm_hexagon_opencl.so",
             ]
             // Extract .so files to lib/<abi> on install. On x86_64 devices with ARM translation
             // (ChromeOS, WSA, emulators) SoLoader otherwise looks for lib/x86_64 inside the APKs,

@@ -1,0 +1,64 @@
+name: Android GPU APK
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: android-gpu-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install dependencies
+        run: |
+          corepack enable
+          yarn install --frozen-lockfile
+      - name: Test GPU configuration
+        run: yarn jest src/utils/inference/__tests__/config.test.ts --runInBand
+      - name: Type check
+        run: yarn typecheck
+      - name: Install Android toolchain
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
+      - name: Build standalone ARM64 APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a
+      - name: Verify GPU library is packaged
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          p = 'android/app/build/outputs/apk/release/app-release.apk'
+          with zipfile.ZipFile(p) as z:
+            for name in ('librnllama_v8_2_dotprod_i8mm_hexagon_opencl.so', 'librnllama_jni_v8_2_dotprod_i8mm_hexagon_opencl.so'):
+              assert 'lib/arm64-v8a/' + name in z.namelist(), name + ' missing'
+            assert 'assets/index.android.bundle' in z.namelist(), 'JS bundle missing'
+          PY
+          mkdir -p release
+          cp android/app/build/outputs/apk/release/app-release.apk release/AnythingLLM-GPU-v0.1.0-arm64.apk
+          cd release && sha256sum *.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AnythingLLM-GPU-v0.1.0-arm64
+          path: release/*
+      - name: Publish experimental APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v0.1.0-gpu.${{ github.run_number }}"
+          gh release create "$tag" release/* --target "$GITHUB_SHA" --prerelease --title "AnythingLLM GPU 0.1.0 (build ${{ github.run_number }})" --notes-file GPU_RELEASE_NOTES.md
