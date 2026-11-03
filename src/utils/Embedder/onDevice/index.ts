@@ -122,6 +122,7 @@ export default class OnDeviceEmbedderProvider {
                     n_ubatch: this.CONTEXT_LENGTH,
                     use_mlock: true,
                     use_mmap: true,
+                    devices: ['CPU'],
                     n_gpu_layers: 0, // CPU only
                 }));
                 this.log(`${this.model} loaded`);

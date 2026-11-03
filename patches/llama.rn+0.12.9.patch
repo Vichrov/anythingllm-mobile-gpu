@@ -1,7 +1,7 @@
 diff --git a/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.java b/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.java
 --- a/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.java
 +++ b/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.java
-@@ -178,11 +178,11 @@
+@@ -178,11 +178,12 @@
        return false;
      }
  
@@ -10,15 +10,16 @@ diff --git a/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.jav
 -      extractHtpLibrariesFromAssets(context);
 -    } catch (Exception e) {
 -      Log.w(TAG, "Failed to extract HTP libraries", e);
-+    // GPU fork: use Adreno OpenCL, never probe or start Hexagon DSP devices.
++    // GPU fork: use Adreno OpenCL, do not create Hexagon DSP devices.
 +    try {
 +      android.system.Os.setenv("LM_GGML_HEXAGON_NDEV", "0", true);
++      android.system.Os.setenv("LM_GGML_HEXAGON_ARCH", "75", true);
 +    } catch (Exception e) {
 +      Log.w(TAG, "Could not disable Hexagon", e);
      }
  
      String cpuFeatures = getCpuFeatures();
-@@ -197,7 +197,7 @@
+@@ -197,7 +198,7 @@
        boolean jniLoaded = false;
        String loadedLib = "";
        if (isArm64V8a()) {

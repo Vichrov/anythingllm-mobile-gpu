@@ -45,8 +45,8 @@ export function contextOptions(config: InferenceConfig, nCtx: number, device?: s
     n_parallel: 1,
     use_mmap: config.mmap,
     use_mlock: false,
-    flash_attn_type: config.flashAttention ? 'on' : 'off',
+    flash_attn_type: config.flashAttention ? 'on' as const : 'off' as const,
     cache_type_k: config.cacheK,
-    cache_type_v: 'f16',
+    cache_type_v: 'f16' as const,
   };
 }

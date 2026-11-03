@@ -176,6 +176,7 @@ export default class ToolReranker {
                 n_ubatch: 512,
                 use_mlock: true,
                 use_mmap: true,
+                devices: ['CPU'],
                 n_gpu_layers: 0,
             }));
 
