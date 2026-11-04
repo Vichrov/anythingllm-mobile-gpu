@@ -11,3 +11,5 @@ The existing OpenCL result was 7.99 tok/s vs CPU 4.57 tok/s on Qwen3.5-4B, conte
 Compare the same GGUF, context, prompt and settings; repeat warm runs on a cooled phone. Native output tok/s excludes loading and prompt processing. The load timer now includes device discovery. Diagnostics show the actual device and library; selecting unavailable GPU raises an explicit error. Native driver failures still require testing on a physical device.
 
 Telemetry remains disabled. Both experimental APKs use the repository debug signing key.
+
+The Vulkan APK requires Android 9 (API 28) or newer for Vulkan 1.1 loader entry points. The OpenCL APK keeps its previous minimum Android version.

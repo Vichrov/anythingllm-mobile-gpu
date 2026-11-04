@@ -62,3 +62,10 @@ if 'if (RNLLAMA_VULKAN_ONLY)' not in s:
     path.write_text(s.replace(marker, block + marker))
 (root / 'src/utils/inference/buildBackend.ts').write_text("// Generated for the Vulkan APK by scripts/vulkan/prepare.py.\nexport const BUILD_BACKEND: 'opencl' | 'vulkan' = 'vulkan';\n")
 print('Restored Vulkan source from', REVISION)
+
+# Vulkan 1.1 loader entry points require Android 9; keep the OpenCL APK minimum unchanged.
+gradle = root / 'android/build.gradle'
+s = gradle.read_text()
+if 'minSdkVersion = 24' not in s and 'minSdkVersion = 28' not in s:
+    raise SystemExit('Android minimum SDK configuration changed')
+gradle.write_text(s.replace('minSdkVersion = 24', 'minSdkVersion = 28'))
