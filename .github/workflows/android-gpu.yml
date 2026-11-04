@@ -8,7 +8,7 @@ permissions:
   contents: write
 concurrency:
   group: android-gpu-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   apk:
     strategy:
@@ -50,17 +50,30 @@ jobs:
         run: |
           mkdir -p build/vulkan-sdk
           curl -fL --retry 3 https://sdk.lunarg.com/sdk/download/1.4.363.1/linux/vulkan_sdk.tar.xz | tar -xJ --strip-components=1 -C build/vulkan-sdk
+      - name: Restore Vulkan native library
+        if: matrix.backend == 'vulkan'
+        uses: actions/cache/restore@v4
+        id: vulkan-native
+        with:
+          path: build/vulkan-prebuilt
+          key: vulkan-native-api28-${{ hashFiles('scripts/vulkan/**', 'patches/llama.rn+0.12.9.patch', 'yarn.lock') }}
       - name: Restore and build Vulkan backend
         if: matrix.backend == 'vulkan'
         run: |
           export VULKAN_SDK="$GITHUB_WORKSPACE/build/vulkan-sdk/x86_64"
           export LD_LIBRARY_PATH="$VULKAN_SDK/lib:${LD_LIBRARY_PATH:-}"
-          git init build/llama-upstream
-          git -C build/llama-upstream remote add origin https://github.com/ggml-org/llama.cpp.git
-          git -C build/llama-upstream fetch --depth 1 origin 6c8dcaa7ae41fa9f4aa2b3b68ee82cb8b2a03632
-          git -C build/llama-upstream checkout FETCH_HEAD
-          python3 scripts/vulkan/prepare.py build/llama-upstream
+          git init "$RUNNER_TEMP/llama-upstream"
+          git -C "$RUNNER_TEMP/llama-upstream" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$RUNNER_TEMP/llama-upstream" fetch --depth 1 origin 6c8dcaa7ae41fa9f4aa2b3b68ee82cb8b2a03632
+          git -C "$RUNNER_TEMP/llama-upstream" checkout FETCH_HEAD
+          python3 scripts/vulkan/prepare.py "$RUNNER_TEMP/llama-upstream"
           bash scripts/vulkan/build.sh
+      - name: Cache Vulkan native library
+        if: matrix.backend == 'vulkan' && steps.vulkan-native.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/vulkan-prebuilt
+          key: ${{ steps.vulkan-native.outputs.cache-primary-key }}
       - name: Test GPU configuration
         run: yarn jest src/utils/inference/__tests__/config.test.ts --runInBand
       - name: Type check
