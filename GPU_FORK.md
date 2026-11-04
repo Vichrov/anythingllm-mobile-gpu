@@ -29,3 +29,9 @@ GitHub Actions `Android GPU APK` installs the locked dependencies, applies the l
 ## Next milestone
 
 Restore Vulkan at the native source/build level, add an armv8.2+dotprod GPU build for pre-i8mm devices, validate Qwen/Gemma model compatibility, measure context/batch/FA/cache combinations on real Adreno devices, and choose profiles from evidence. Do not label these future tasks complete on the basis of an APK build.
+
+## 0.1.1 Vulkan build
+
+See GPU_RELEASE_NOTES.md. The workflow builds two APKs with matching version/signature to allow switching without removing downloaded GGUFs. The Vulkan source restoration is reproducible via `scripts/vulkan/prepare.py` against the exact llama.cpp submodule commit used by llama.rn 0.12.9; `scripts/vulkan/build.sh` cross-compiles the isolated core plus Vulkan backend and embedded SPIR-V. Vulkan and OpenCL are separate builds because loading multiple copies of the core into one process would complicate native symbol and context ownership. The Java loader probes the new Vulkan JNI variant, then CPU fallback; the Vulkan APK excludes OpenCL.
+
+User feedback: Qwen3.5-4B, context 4096, CPU 4.57 tok/s, OpenCL 7.99 tok/s; q8 K-cache, Flash Attention and fewer GPU layers all reduced decode speed on the user's tested setup. Baseline stays f16, FA off, all layers. No Vulkan speed claim until physical-device results exist.

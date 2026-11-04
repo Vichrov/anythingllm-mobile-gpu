@@ -11,8 +11,12 @@ concurrency:
   cancel-in-progress: true
 jobs:
   apk:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [opencl, vulkan]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,41 +31,80 @@ jobs:
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
       - name: Install dependencies
         run: |
           corepack enable
           yarn install --frozen-lockfile
+      - name: Install Android toolchain
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
+      - name: Vulkan SDK cache
+        if: matrix.backend == 'vulkan'
+        uses: actions/cache@v4
+        id: vulkan-sdk
+        with:
+          path: build/vulkan-sdk
+          key: vulkan-sdk-linux-1.4.363.1
+      - name: Download pinned Vulkan SDK
+        if: matrix.backend == 'vulkan' && steps.vulkan-sdk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p build/vulkan-sdk
+          curl -fL --retry 3 https://sdk.lunarg.com/sdk/download/1.4.363.1/linux/vulkan_sdk.tar.xz | tar -xJ --strip-components=1 -C build/vulkan-sdk
+      - name: Restore and build Vulkan backend
+        if: matrix.backend == 'vulkan'
+        run: |
+          export VULKAN_SDK="$GITHUB_WORKSPACE/build/vulkan-sdk/x86_64"
+          export LD_LIBRARY_PATH="$VULKAN_SDK/lib:${LD_LIBRARY_PATH:-}"
+          git init build/llama-upstream
+          git -C build/llama-upstream remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C build/llama-upstream fetch --depth 1 origin 6c8dcaa7ae41fa9f4aa2b3b68ee82cb8b2a03632
+          git -C build/llama-upstream checkout FETCH_HEAD
+          python3 scripts/vulkan/prepare.py build/llama-upstream
+          bash scripts/vulkan/build.sh
       - name: Test GPU configuration
         run: yarn jest src/utils/inference/__tests__/config.test.ts --runInBand
       - name: Type check
         run: yarn typecheck
-      - name: Install Android toolchain
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
       - name: Build standalone ARM64 APK
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a
-      - name: Verify GPU library is packaged
+      - name: Verify native backend and bundle
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: |
           python3 - <<'PY'
-          import zipfile
-          p = 'android/app/build/outputs/apk/release/app-release.apk'
-          with zipfile.ZipFile(p) as z:
-            for name in ('librnllama_v8_2_dotprod_i8mm_hexagon_opencl.so', 'librnllama_jni_v8_2_dotprod_i8mm_hexagon_opencl.so'):
-              assert 'lib/arm64-v8a/' + name in z.namelist(), name + ' missing'
-            assert 'assets/index.android.bundle' in z.namelist(), 'JS bundle missing'
+          import os, zipfile
+          suffix = 'vulkan' if os.environ['BACKEND'] == 'vulkan' else 'hexagon_opencl'
+          with zipfile.ZipFile('android/app/build/outputs/apk/release/app-release.apk') as z:
+            for prefix in ('librnllama_', 'librnllama_jni_'):
+              name = f'lib/arm64-v8a/{prefix}v8_2_dotprod_i8mm_{suffix}.so'
+              assert name in z.namelist(), name + ' missing'
+            if suffix == 'vulkan':
+              assert not any('hexagon_opencl' in n for n in z.namelist()), 'Unexpected OpenCL fallback'
+            assert 'assets/index.android.bundle' in z.namelist()
           PY
           mkdir -p release
-          cp android/app/build/outputs/apk/release/app-release.apk release/AnythingLLM-GPU-v0.1.0-arm64.apk
-          cd release && sha256sum *.apk > SHA256SUMS.txt
+          cp android/app/build/outputs/apk/release/app-release.apk "release/AnythingLLM-v0.1.1-${BACKEND}-arm64.apk"
+          cd release && sha256sum *.apk > "SHA256SUMS-${BACKEND}.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: AnythingLLM-GPU-v0.1.0-arm64
+          name: apk-${{ matrix.backend }}
           path: release/*
-      - name: Publish experimental APK
+  release:
+    needs: apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: apk-*
+          merge-multiple: true
+          path: release
+      - name: Publish APKs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="v0.1.0-gpu.${{ github.run_number }}"
-          gh release create "$tag" release/* --target "$GITHUB_SHA" --prerelease --title "AnythingLLM GPU 0.1.0 (build ${{ github.run_number }})" --notes-file GPU_RELEASE_NOTES.md
+          tag="v0.1.1-gpu.${{ github.run_number }}"
+          gh release create "$tag" release/* --target "$GITHUB_SHA" --prerelease --title "AnythingLLM 0.1.1 — Vulkan / OpenCL" --notes-file GPU_RELEASE_NOTES.md

@@ -1,5 +1,7 @@
+import { BUILD_BACKEND } from './buildBackend';
+export { BUILD_BACKEND } from './buildBackend';
 export type InferenceConfig = {
-  backend: 'cpu' | 'opencl';
+  backend: 'cpu' | 'opencl' | 'vulkan';
   gpuLayers: number;
   threads: number;
   batch: number;
@@ -13,14 +15,14 @@ export const DEFAULT_CONFIG: InferenceConfig = {
 };
 export const PROFILES: Record<string, InferenceConfig> = {
   'CPU / Snapdragon 855+': { ...DEFAULT_CONFIG, batch: 128 },
-  'Adreno / Meizu 21': { ...DEFAULT_CONFIG, backend: 'opencl', gpuLayers: 99 },
-  'Adreno / low memory': { ...DEFAULT_CONFIG, backend: 'opencl', gpuLayers: 16, batch: 128 },
+  'Adreno / Meizu 21': { ...DEFAULT_CONFIG, backend: BUILD_BACKEND, gpuLayers: 99 },
+  'Adreno / low memory': { ...DEFAULT_CONFIG, backend: BUILD_BACKEND, gpuLayers: 16, batch: 128 },
 };
 export function normalizeConfig(value: Partial<InferenceConfig> = {}): InferenceConfig {
   const integer = (v: unknown, fallback: number, min: number, max: number) =>
     typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.floor(v))) : fallback;
   return {
-    backend: value.backend === 'opencl' ? 'opencl' : 'cpu',
+    backend: value.backend === 'opencl' || value.backend === 'vulkan' ? BUILD_BACKEND : 'cpu',
     gpuLayers: integer(value.gpuLayers, 32, 1, 999),
     threads: integer(value.threads, 4, 1, 16),
     batch: integer(value.batch, 256, 32, 512),
@@ -29,16 +31,16 @@ export function normalizeConfig(value: Partial<InferenceConfig> = {}): Inference
     mmap: value.mmap !== false,
   };
 }
-export function selectOpenCLDevice(devices: { backend: string; type: string; deviceName: string }[]): string {
-  const device = devices.find(d => /opencl/i.test(d.backend) && /gpu/i.test(d.type));
-  if (!device) throw new Error('Adreno OpenCL GPU недоступен. Выберите CPU. Драйвер или нативная библиотека не предоставили OpenCL GPU.');
+export function selectGPUDevice(devices: { backend: string; type: string; deviceName: string }[], backend: 'opencl' | 'vulkan'): string {
+  const device = devices.find(d => d.backend.toLowerCase() === backend && /gpu/i.test(d.type));
+  if (!device) throw new Error(`${backend} GPU недоступен. Выберите CPU. Драйвер или нативная библиотека не предоставили выбранный GPU backend.`);
   return device.deviceName;
 }
 export function contextOptions(config: InferenceConfig, nCtx: number, device?: string) {
-  if (config.backend === 'opencl' && !device) throw new Error('OpenCL device must be selected explicitly');
+  if (config.backend !== 'cpu' && !device) throw new Error('GPU device must be selected explicitly');
   return {
-    n_gpu_layers: config.backend === 'opencl' ? config.gpuLayers : 0,
-    devices: config.backend === 'opencl' ? [device!] : ['CPU'],
+    n_gpu_layers: config.backend !== 'cpu' ? config.gpuLayers : 0,
+    devices: config.backend !== 'cpu' ? [device!] : ['CPU'],
     n_threads: config.threads,
     n_batch: Math.min(config.batch, nCtx),
     n_ubatch: Math.min(config.batch, nCtx),

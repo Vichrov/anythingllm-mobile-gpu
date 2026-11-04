@@ -2,7 +2,7 @@ import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { Alert, Share, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getBackendDevicesInfo } from 'llama.rn';
 import {
-  DEFAULT_CONFIG, PROFILES, InferenceConfig, getInferenceConfig, saveInferenceConfig,
+  BUILD_BACKEND, DEFAULT_CONFIG, PROFILES, InferenceConfig, getInferenceConfig, saveInferenceConfig,
   getInferenceReports, subscribeInference,
 } from '@/utils/inference';
 
@@ -29,11 +29,11 @@ export default function InferenceSettings() {
     } catch (e) { Alert.alert('Settings', String(e)); } finally { setBusy(false); }
   }
   return <View style={{ backgroundColor: '#202027', padding: 16, borderRadius: 12, gap: 12 }}>
-    <Text style={{ ...label, fontSize: 18, fontWeight: 'bold' }}>GPU Lab · v0.1.0</Text>
-    <Text style={muted}>Adreno OpenCL · экспериментальный / experimental</Text>
+    <Text style={{ ...label, fontSize: 18, fontWeight: 'bold' }}>GPU Lab · v0.1.1</Text>
+    <Text style={muted}>Adreno {BUILD_BACKEND === 'vulkan' ? 'Vulkan' : 'OpenCL'} · experimental</Text>
     <View style={{ flexDirection: 'row', gap: 8 }}>
       {button('CPU', () => setConfig({ ...config, backend: 'cpu' }), config.backend === 'cpu')}
-      {button('GPU · OpenCL', () => setConfig({ ...config, backend: 'opencl' }), config.backend === 'opencl')}
+      {button(`GPU · ${BUILD_BACKEND}`, () => setConfig({ ...config, backend: BUILD_BACKEND }), config.backend === BUILD_BACKEND)}
     </View>
     {Object.entries(PROFILES).map(([name, profile]) => button(name, () => setConfig({ ...profile })))}
     {([['gpuLayers', 'GPU слои / layers (99 = all for most models)'], ['threads', 'CPU потоки / threads (1–16)'], ['batch', 'Batch (32–512)']] as const).map(([key, title]) =>

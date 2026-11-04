@@ -19,12 +19,28 @@ diff --git a/node_modules/llama.rn/android/src/main/java/com/rnllama/RNLlama.jav
      }
  
      String cpuFeatures = getCpuFeatures();
-@@ -197,7 +198,7 @@
+@@ -197,7 +198,12 @@
        boolean jniLoaded = false;
        String loadedLib = "";
        if (isArm64V8a()) {
 -        if (hasDotProd && hasI8mm && hasHexagon && hasAdreno) {
-+        if (hasDotProd && hasI8mm && hasAdreno) {
++        if (hasDotProd && hasI8mm && tryLoadLibrary("rnllama_jni_v8_2_dotprod_i8mm_vulkan")) {
++          jniLoaded = true;
++          loadedLib = "rnllama_jni_v8_2_dotprod_i8mm_vulkan";
++        }
++
++        if (!jniLoaded && hasDotProd && hasI8mm && hasAdreno) {
            if (tryLoadLibrary("rnllama_jni_v8_2_dotprod_i8mm_hexagon_opencl")) {
              jniLoaded = true;
              loadedLib = "rnllama_jni_v8_2_dotprod_i8mm_hexagon_opencl";
+diff --git a/node_modules/llama.rn/android/src/main/CMakeLists.txt b/node_modules/llama.rn/android/src/main/CMakeLists.txt
+--- a/node_modules/llama.rn/android/src/main/CMakeLists.txt
++++ b/node_modules/llama.rn/android/src/main/CMakeLists.txt
+@@ -145,6 +145,7 @@
+ build_rnllama_jni("rnllama_jni" "rnllama" "generic" "")
+ 
+ if (ANDROID_ABI AND ANDROID_ABI STREQUAL "arm64-v8a")
++    build_rnllama_jni("rnllama_jni_v8_2_dotprod_i8mm_vulkan" "rnllama_v8_2_dotprod_i8mm_vulkan" "arm" "-march=armv8.2-a+dotprod+i8mm")
+     # ARM64 targets
+     # Removing fp16 for now as it leads to issues with some models like deepseek r1 distills
+     # https://github.com/mybigday/llama.rn/pull/110#issuecomment-2609918310

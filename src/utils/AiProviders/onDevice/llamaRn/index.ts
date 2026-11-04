@@ -1,4 +1,4 @@
-import { getInferenceConfig, contextOptions, selectOpenCLDevice, recordInference, type InferenceReport } from '@/utils/inference';
+import { getInferenceConfig, contextOptions, selectGPUDevice, recordInference, type InferenceReport } from '@/utils/inference';
 import {
   initLlama,
   getBackendDevicesInfo,
@@ -406,9 +406,9 @@ export default class LlamaRnWrapper {
   private async createContext({ multimodal }: { multimodal: boolean }) {
     const nCtx = this.contextLength;
     const config = await getInferenceConfig();
-    const device = config.backend === 'opencl'
-      ? selectOpenCLDevice(await getBackendDevicesInfo()) : undefined;
     const started = Date.now();
+    const device = config.backend !== 'cpu'
+      ? selectGPUDevice(await getBackendDevicesInfo(), config.backend) : undefined;
     const details = { source: this.modelDefinition ? 'catalog' : 'imported', model_id: this.model, n_ctx: nCtx, multimodal };
     const context = await Telemetry.trackNativeModelLoad('chat', this.ggufFilePath!, details, () => initLlama({
       model: this.ggufFilePath!,
@@ -417,14 +417,14 @@ export default class LlamaRnWrapper {
       ctx_shift: !multimodal,
       ...(this.modelDefinition?.chatTemplateString ? { chat_template: this.modelDefinition.chatTemplateString } : {}),
     }));
-    if (config.backend === 'opencl' && !context.gpu) {
+    if (config.backend !== 'cpu' && !context.gpu) {
       const reason = context.reasonNoGPU;
       await context.release();
       throw new Error(`GPU не включился / GPU inactive: ${reason || 'native context reports CPU'}. Select CPU or reduce GPU layers.`);
     }
     this.inferenceKey = JSON.stringify(config);
     this.inferenceReport = {
-      model: this.model, backend: context.gpu ? 'OpenCL GPU' : 'CPU',
+      model: this.model, backend: context.gpu ? (config.backend === 'vulkan' ? 'Vulkan GPU' : 'OpenCL GPU') : 'CPU',
       devices: context.devices ?? [], library: context.androidLib,
       loadMs: Date.now() - started, contextLength: nCtx, config, timestamp: Date.now(),
     };
